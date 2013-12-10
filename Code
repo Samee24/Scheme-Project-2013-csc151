@@ -1,0 +1,448 @@
+#lang racket
+(require gigls/unsafe)
+
+;;; Procedure:
+;;;   canvas
+;;; Parameters:
+;;;   component1, a positive integer or zero
+;;;   width, a positive integer
+;;;   height, a positive integer
+;;; Purpose:
+;;;   Creates an image with an either slight black to intense white blend or an intense black
+;;;   to slight white blend depending upon component1.
+;;; Produces:
+;;;   picture, an image.
+;;; Preconditions:
+;;;   [None Additional]
+;;; Additional:
+;;;   There are two image-compute procedures since we want to vary the background
+;;;   (and star) color according to component1.
+(define canvas
+  (lambda (component1 width height)
+    (let*                                                               
+        ([scaler (/ 50 (/ (+ width height) 2))]
+         [anti-scaler (/ 1100 (/ (+ width height) 2))])
+      (if (<= component1 4)
+          (image-compute
+           (lambda (width height)                
+             (rgb-new
+              ;anti-scaler makes the background blend from a slight black to  mostly white.
+              (* anti-scaler (+ width height))
+              (* anti-scaler (+ width height))
+              (* anti-scaler (+ width height))))
+           width height)
+          (image-compute
+           (lambda (width height)                
+             (rgb-new
+              ;scaler makes the background blend from mostly black to slightly white.
+              (* scaler (+ width height))
+              (* scaler (+ width height))
+              (* scaler (+ width height))))
+           width height)))))
+
+;;; Procedure:
+;;;   image-series
+;;; Parameters:
+;;;   n, an integer
+;;;   width, a positive integer
+;;;   height, a positive integer
+;;; Purpose:
+;;;   Create an "interesting" image.
+;;; Produces:
+;;;   image, an image
+;;; Preconditions:
+;;;   0 <= n < 999
+;;; Postconditions:
+;;;   (image-width image) = width
+;;;   (image-height image) = height
+;;;   For all m != n
+;;;     (image-series m width height) is different than image
+;;; Props:
+;;;   Thanks to Andrew Kelley for suggesting that we think about n as a series of integers rather than
+;;;   one big one.
+;;; Recommended:
+;;;  
+(define image-series
+  (lambda (n width height)
+    (let*
+        ([component1 (modulo n 10)]
+         [component2 (modulo (floor (/ n 10)) 10)]
+         [component3 (modulo (floor (/ n 100)) 10)]
+         [image (canvas component1 width height)]
+         ;defines an RGB color in its HSV representation, with the hue multiplied with a constant n (in this case component 2)
+         [rgb (hsv->rgb (map inexact->exact (list (* component2 36) 1 1)))]
+         [tim (turtle-new image)]
+         [jim (turtle-new image)])
+      (lines width height tim component2 rgb)
+      (star-formations image component1 width height)
+      (shape-sequence jim width height component3 rgb)
+      ;inserts a supernova filter with the center at the transition point between OL and L1, L2 and L3
+      (plug-in-nova 1 image (car(gimp-image-get-active-drawable image))
+                    (* 1/10 width) 
+                    (* 1/10 height)
+                    (hsv->rgb (list (+ (rgb->hue (rgb-complement rgb)) 90) 1 1))
+                    (ceiling (*(/ (+ width height) 2) (/ 5 200))) 22 0)
+      (image-show image))))
+
+;;; Procedure:
+;;;   lines
+;;; Parameters:
+;;;  width, an integer
+;;;  height, an integer
+;;;  turt, a turtle
+;;;  n, an integer
+;;;  rgb, a color in rgb format
+;;; Purpose:
+;;;   Create a sequence of four lines using turt, and 3 of the lines' color
+;;;   being a variant of rgb and one as just rgb - n changes the value of rgb.
+;;; Produces:
+;;;   draw, a turtle drawing
+;;; Preconditions:
+;;;   width = height
+;;;   0 <= n <= 9
+;;; Postconditions:
+;;;   where image is the drawable where turt exists or = (define turt (image-new width height))
+;;;   (image-width image) = width
+;;;   (image-height image) = height
+(define lines
+  (lambda (width height turt n rgb)
+    (let*
+        ;uses the Pythagorean theorem to take the diagonal length of the image,
+        ;and caluculates a length. (used for OL)
+        ([pythag-OL (* 1/10 (sqrt (+ (expt width 2) (expt height 2))))]
+         ;uses the Pythagorean theorem to take the diagonal length of the image,
+         ;and calculates a length. (used for L1, L2 and L3)
+         [pythag-dist (* 9/10 (sqrt (+ (expt width 2) (expt height 2))))]
+         ;y coordinate at the junction point (where OL splits into L1, L2 and L3)
+         [tele-h (* 1/10 height)]
+         ;x coordinate at the junction point (where OL splits into L1, L2 and L3)
+         [tele-w (* 1/10 width)])
+      ; draw the center line
+      (turtle-teleport! turt tele-h tele-w)
+      (turtle-turn! turt 45)
+      (turtle-set-brush! turt "2. Hardness 100" (if (> 300 (/ (+ width height) 2))
+                                                    2
+                                                    (floor(* 1/125 (/ (+ width height) 2))))
+                         ;since it is impossible to scale a brush to anything less than 1, images with average width
+                         ;and height of less than 300 will have brushes scaled to size 2
+                         )
+      (turtle-set-color! turt (rgb-complement rgb))
+      (turtle-forward! turt pythag-dist)
+      ; draw the bottom line
+      (turtle-teleport! turt tele-h tele-w)
+      (turtle-turn! turt 27)
+      (turtle-set-brush! turt "2. Hardness 100" (if (> 300 (/ (+ width height) 2))
+                                                    1
+                                                    (round(* 1/250 (/ (+ width height) 2))))
+                         ;since it is impossible to scale a brush to anything less than 1, images with average width
+                         ;and height of less than 300 will have brushes scaled to size 1
+                         )
+      (turtle-set-color! turt (hsv->rgb (list (+ (rgb->hue (rgb-complement rgb)) 30) 1 1)))
+      (turtle-forward! turt pythag-dist)
+      (turtle-teleport! turt tele-h tele-w)
+      ; draw the upper line
+      (turtle-turn! turt -41)
+      (turtle-set-brush! turt "2. Hardness 100" (if (> 300 (/ (+ width height) 2))
+                                                    1
+                                                    (round(* 1/250 (/ (+ width height) 2))))
+                         ;since it is impossible to scale a brush to anything less than 1, images with average width
+                         ;and height of less than 300 will have brushes scaled to size 1
+                         )
+      (turtle-set-color! turt (hsv->rgb (list (- (rgb->hue (rgb-complement rgb)) 30) 1 1)))
+      (turtle-forward! turt pythag-dist)
+      (turtle-teleport! turt 0 0)
+      (turtle-set-brush! turt "2. Hardness 100" (if (> 300 (/ (+ width height) 2))
+                                                    3
+                                                    (ceiling(* 2/125 (/ (+ width height) 2))))
+                         ;since it is impossible to scale a brush to anything less than 1, images with average width
+                         ;and height of less than 300 will have brushes scaled to size 3
+                         )
+      (turtle-set-color! turt rgb)
+      ; draw the thick origin line
+      (turtle-turn! turt 14)
+      (turtle-forward! turt pythag-OL))))
+
+;;; Purpose:
+;;;   create a unit circle as basis for our circle sequence.
+
+(define unit-circle
+  (lambda (size turt)
+    (repeat 72
+            (lambda ()
+              (turtle-forward! turt size)
+              (turtle-turn! turt 5)))))
+
+;;; Purpose:
+;;;   create a unit triangle as basis for our triangle sequence.
+
+(define unit-triangle
+  (lambda (size turt)
+    (turtle-forward! turt size)
+    (turtle-turn! turt 120)
+    (turtle-forward! turt size)
+    (turtle-turn! turt 120)
+    (turtle-forward! turt size)))
+
+;;; Purpose:
+;;;   create a template for a sequence of triangles decreasing in size (starting near the transition point)
+;;;   angled between L1 and L2.
+
+(define left-triangle-sequence
+  (lambda (size turt spacing)
+    (turtle-face! turt 28)
+    (unit-triangle size turt)
+    (turtle-up! turt)
+    (turtle-face! turt 58)
+    (turtle-forward! turt spacing)
+    (turtle-down! turt)))
+
+;;; Purpose:
+;;;   create a template for a sequence of triangles decreasing in size (starting near the transition point)
+;;;   angled between L1 and L3.
+
+(define right-triangle-sequence
+  (lambda (size turt spacing)
+    (turtle-face! turt 8)
+    (unit-triangle size turt)
+    (turtle-up! turt)
+    (turtle-face! turt 38)
+    (turtle-forward! turt spacing)
+    (turtle-down! turt)))
+
+;;; Purpose:
+;;;   create a template for a sequence of circles decreasing in size (starting near the transition point)
+;;;   angled between L1 and L2.
+
+(define left-circle-sequence
+  (lambda (size turt spacing)
+    (turtle-face! turt -32)
+    (unit-circle size turt)
+    (turtle-up! turt)
+    (turtle-face! turt 58)
+    (turtle-forward! turt spacing)
+    (turtle-down! turt)))
+
+;;; Purpose:
+;;;   create a template for a sequence of circles decreasing in size (starting near the transition point)
+;;;   angled between L1 and L3.
+
+(define right-circle-sequence
+  (lambda (size turt spacing)
+    (turtle-face! turt -52)
+    (unit-circle size turt)
+    (turtle-up! turt)
+    (turtle-face! turt 38)
+    (turtle-forward! turt spacing)
+    (turtle-down! turt)))
+
+;;; Purpose:
+;;;   adjust turt so that it faces the angle bisector of L1 and L3 (in preparation to draw any drawings on that angle)
+
+(define right-side
+  (lambda (turt width height)
+    (turtle-teleport! turt (* 1/10 width)  (* 1/10 height))
+    (turtle-face! turt 38)
+    (turtle-up! turt)
+    (turtle-forward! turt (* 1/25 (/ (+ width height) 2)))
+    (turtle-down! turt)))
+
+
+;;; Purpose:
+;;;   adjust turt so that it faces the angle bisector of L1 and L2 (in preparation to draw any drawings on that angle)
+
+(define left-side
+  (lambda (turt width height)
+    (turtle-teleport! turt (* 1/10 width)  (* 1/10 height))
+    (turtle-face! turt 58)
+    (turtle-up! turt)
+    (turtle-forward! turt (* 1/25 (/ (+ width height) 2)))
+    (turtle-down! turt)))
+
+;;; Purpose:
+;;;   create  a sequence of intersecting triangles decreasing in size (starting near the transition point)
+;;;   angled between L1 and L2.
+
+(define left-triangle
+  (lambda (turt width height)
+    (for-each left-triangle-sequence
+              (map (l-s * (/ (+ width height) 2))
+                   (map (r-s / 500)
+                        (map (r-s * 10) 
+                             (map (r-s expt 1.2)
+                                  (map increment (iota 12))))))
+              (make-list 12 turt)
+              (map (r-s * (/ (+ width height) 2))
+                   (map (r-s * 0.012)
+                        (map increment (iota 12)))))))
+;;; Purpose:
+;;;   create  a sequence of intersecting triangles decreasing in size (starting near the transition point)
+;;;   angled between L1 and L3.
+
+(define right-triangle
+  (lambda (turt width height)
+    (for-each right-triangle-sequence
+              (map (l-s * (/ (+ width height) 2))
+                   (map (r-s / 500)
+                        (map (r-s * 4.5) 
+                             (map (r-s expt 1.25)
+                                  (map increment (iota 14))))))
+              (make-list 14 turt)
+              (map (r-s * (/ (+ width height) 2))
+                   (map (r-s * 0.012)
+                        (map increment (iota 14)))))))
+;;; Purpose:
+;;;   create  a sequence of intersecting circles decreasing in size (starting near the transition point)
+;;;   angled between L1 and L2.
+
+(define left-circle
+  (lambda (turt width height)
+    (for-each left-circle-sequence
+              (map (l-s * (/ (+ width height) 2))
+                   (map (r-s / 500)
+                        (map (r-s * 0.25)
+                             (map (r-s expt 1.2)
+                                  (map increment (iota 16))))))
+              (make-list 16 turt)
+              (map (r-s * (/ (+ width height) 2))
+                   (map (r-s * 0.008)
+                        (map increment (iota 16)))))))
+;;; Purpose:
+;;;   create  a sequence of intersecting circles decreasing in size (starting near the transition point)
+;;;   angled between L1 and L3.
+
+(define right-circle
+  (lambda (turt width height)
+    (for-each right-circle-sequence
+              (map (l-s * (/ (+ width height) 2))
+                   (map (r-s / 500)
+                        (map (r-s * 0.135) 
+                             (map (r-s expt 1.25)
+                                  (map increment (iota 15))))))
+              (make-list 15 turt)
+              (map (r-s * (/ (+ width height) 2))
+                   (map (r-s * 0.01)
+                        (map increment (iota 15)))))))
+
+;;; Procedure:
+;;;  shape-sequence
+;;; Parameters:
+;;;  turt, a turtle
+;;;  width, an integer
+;;;  height, an integer
+;;;  component3, an integer
+;;;  rgb, a color in rgb format
+;;; Purpose:
+;;;   Create a sequence of circles, triangles or both (decreasing in size) between L1 and L2, L1 and L3 or both.
+;;; Produces:
+;;;   draw2, a turtle drawing
+;;; Preconditions:
+;;;   width = height
+;;;   0 <= n <= 9
+;;; Postconditions:
+;;;   where image is the drawable where turt exists or = (define turt (image-new width height))
+;;;   (image-width image) = width
+;;;   (image-height image) = height
+
+(define shape-sequence
+  (lambda (turt width height component3 rgb)
+    ;color is derived from the hue angle of rgb
+    (turtle-set-color! turt (hsv->rgb (list (- (rgb->hue (rgb-complement rgb)) 90) 1 1)))
+    ;scaling the brush according to the average width and height.
+    (turtle-set-brush! turt "2. Hardness 100" (ceiling (* 0.01 (/ (+ width height) 2))))
+    (cond
+      ((eq? component3 0)
+       (left-side turt width height)
+       (left-circle turt width height))
+      ((eq? component3 1)
+       (left-side turt width height)
+       (left-triangle turt width height))
+      ((eq? component3 2)
+       (right-side turt width height)
+       (right-triangle turt width height))
+      ((eq? component3 3)
+       (right-side turt width height)
+       (right-circle turt width height))
+      ((eq? component3 4)
+       (left-side turt width height)
+       (left-circle turt width height)
+       (right-side turt width height)
+       (right-circle turt width height))
+      ((eq? component3 5)
+       (left-side turt width height)
+       (left-triangle turt width height)
+       (right-side turt width height)
+       (right-triangle turt width height))
+      ((eq? component3 6)
+       (left-side turt width height)
+       (left-triangle turt width height)
+       (right-side turt width height)
+       (right-circle turt width height))
+      ((eq? component3 7)
+       (left-side turt width height)
+       (left-circle turt width height)
+       (right-side turt width height)
+       (right-triangle turt width height))
+      ((eq? component3 8) 
+       ;for component3 = 0, 8, we have the same draw2, since in canvas, we have 2 different
+       ;bgs for component3 > 4 and component3 < 4 - giving us variations.
+       (right-side turt width height)
+       (right-circle turt width height))
+      ((eq? component3 9)
+       ;for component3 = 2, 9, we have the same draw2, since in canvas, we have 2 different
+       ;bgs for component3 > 4 and component3 < 4 - giving us variations.
+       (left-side turt width height)
+       (left-circle turt width height)))))
+
+;;; Purpose:
+;;;   create the first size of star
+(define star1
+  (lambda (n width height)
+    (drawing-recolor
+     (drawing-vshift
+      (drawing-hshift
+       (drawing-scale drawing-unit-circle
+                      (if (> 500 (/ (+ width height) 2))
+                          1
+                          (* 1/500 (/ (+ width height) 2)))
+                      ;since it is impossible to scale a shape to anything less than 1, images with average width
+                      ;and height of less than 500 will have shapes scaled to size 1
+                      )
+       5)
+      0)
+     (if (<= n 4)
+         "black"
+         "white"))))
+
+;;; Purpose:
+;;;   create the second size of star
+(define star2
+  (lambda (n width height)
+    (drawing-recolor
+     (drawing-vshift
+      (drawing-hshift
+       (drawing-scale drawing-unit-circle
+                      (if (> 500 (/ (+ width height) 2))
+                          2
+                          (* 1/125 (/ (+ width height) 2)))
+                      ;since it is impossible to scale a shape to anything less than 1, images with average width
+                      ;and height of less than 500 will have shapes scaled to size 2
+                      )
+       5)
+      0)
+     (if (<= n 4)
+         "black"
+         "white"))))
+
+;;; Purpose:
+;;;   create the third size of star
+(define star3
+  (lambda (n width height)
+    (drawing-recolor
+     (drawing-vshift          
+      (drawing-hshift
+       (drawing-scale drawing-unit-circle
+                      (if (> 500 (/ (+ width height) 2))
+                          3
+                          (* 3/250 (/ (+ width height) 2)))
+                      ;since it is impossible to scale a shape to anything less than 1, images with average width
+                      ;and height of less than 500 will have shapes scaled to size 3

@@ -1,5 +1,3 @@
-
-
 #lang racket
 (require gigls/unsafe)
 
@@ -448,4 +446,3 @@
                           (* 3/250 (/ (+ width height) 2)))
                       ;since it is impossible to scale a shape to anything less than 1, images with average width
                       ;and height of less than 500 will have shapes scaled to size 3
-```

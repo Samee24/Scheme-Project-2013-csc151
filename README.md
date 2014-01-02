@@ -14,6 +14,7 @@ Nick Knoebber
 
 By utilizing GIMP + Mediascript + Scheme, I (along with my partners) created a program that churns out 1000 unique images. Although these images aren't representational, their basic theme exudes a sense of depth and perception in deep space, overlaid with retro shape and line sequences - the shapes and lines utilize an accented analogic color scheme.
 
+I dealt with most of the coding, and constructed the majority of the functions required for our project. Hence, I was also responsible for the design statement.
 
 More details are explained in our design and technique statements below:
 
